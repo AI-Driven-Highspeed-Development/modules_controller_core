@@ -1,4 +1,5 @@
 version: 0.0.1
 folder_path: cores/modules_controller_core
+repo_url: https://github.com/AI-Driven-Highspeed-Development/modules_controller_core.git
 type: core
 requirements: []

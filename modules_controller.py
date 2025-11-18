@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from dataclasses import dataclass, field
-from managers.config_manager import ConfigManager
 from utils.logger_util.logger import Logger
 from cores.yaml_reading_core.yaml_reading import YamlReadingCore as YamlReader
 from cores.modules_controller_core.module_types import ModuleType, ModuleTypes
@@ -83,8 +82,6 @@ class ModulesController:
             return
         self.root_path = root
         self.logger = Logger(name=__class__.__name__)
-        self.cm = ConfigManager()
-        self.config = self.cm.config.modules_controller_core
         self.module_types = ModuleTypes(root_path=root)
         self._report: Optional[ModulesReport] = None
         self._initialized = True

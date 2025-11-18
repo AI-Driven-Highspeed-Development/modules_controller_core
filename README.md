@@ -18,9 +18,11 @@ Central registry that scans every module folder, validates metadata, and surface
 ## Quickstart
 
 ```python
+from pathlib import Path
 from cores.modules_controller_core.modules_controller import ModulesController
 
-controller = ModulesController()
+project_root = Path.cwd()  # or any project directory you want to inspect
+controller = ModulesController(root_path=project_root)
 report = controller.list_all_modules()
 
 print(f"Total modules: {len(report.modules)}")

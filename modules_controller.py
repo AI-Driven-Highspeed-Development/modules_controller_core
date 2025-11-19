@@ -25,6 +25,7 @@ class ModuleInfo:
     repo_url: Optional[str] = None
     requirements: List[str] = field(default_factory=list)
     issues: List[ModuleIssue] = field(default_factory=list)
+    shows_in_workspace: Optional[bool] = None
 
     def initializer_path(self) -> Path:
         """Return the expected __init__.py path for this module."""
@@ -141,6 +142,7 @@ class ModulesController:
                     "type": init_data.get("type"),
                     "repo_url": init_data.get("repo_url"),
                     "requirements": init_data.get("requirements"),
+                    "shows_in_workspace": init_data.get("shows_in_workspace"),
                 }
 
                 issues = create_issues(info, module_path=child / "init.yaml")
@@ -156,6 +158,7 @@ class ModulesController:
                     path=child,
                     repo_url=str(info["repo_url"]) if isinstance(info["repo_url"], str) and info["repo_url"].strip() else None,
                     requirements=requirements_value,
+                    shows_in_workspace=info["shows_in_workspace"] if isinstance(info["shows_in_workspace"], bool) else None,
                     issues=issues,
                 )
                 for issue in issues:

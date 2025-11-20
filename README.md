@@ -14,6 +14,8 @@ Central registry that scans every module folder, validates metadata, and surface
 - **Rich module info** – `ModuleInfo` stores name, version, module type, repo URL, path, requirements, and attached issues
 - **Helpers for init.yaml** – update specific keys or overwrite entire metadata files via `update_module_init_yaml*`
 - **Module type registry** – `ModuleTypes` exposes per-type paths, names, and plural forms for other tooling
+- **Refresh Script Support** – Detects and executes `refresh.py` scripts via `run_module_refresh_script`.
+- **Module Lookup** – Find modules by name using `get_module_by_name`.
 
 ## Quickstart
 
@@ -29,6 +31,12 @@ print(f"Total modules: {len(report.modules)}")
 for module in report.issued_modules:
 	issue_codes = ", ".join(issue.code.value for issue in module.issues)
 	print(f"{module.name} ({module.module_type.name}) -> {issue_codes}")
+
+# Find a specific module
+logger_module = controller.get_module_by_name("logger_util")
+if logger_module:
+    # Run its refresh script
+    controller.run_module_refresh_script(logger_module)
 
 # Update a field in init.yaml when needed
 controller.update_module_init_yaml_field(module.path, "repo_url", "https://github.com/org/module.git")
@@ -46,6 +54,9 @@ class ModuleInfo:
 	repo_url: str | None = None
 	requirements: list[str] = field(default_factory=list)
 	issues: list[ModuleIssue] = field(default_factory=list)
+    shows_in_workspace: bool | None = None
+    def has_refresh_script(self) -> bool: ...
+    def has_initializer(self) -> bool: ...
 
 @dataclass
 class ModulesReport:
@@ -55,6 +66,8 @@ class ModulesReport:
 class ModulesController:
 	def list_all_modules(self) -> ModulesReport: ...
 	def scan_all_modules(self) -> ModulesReport: ...
+    def get_module_by_name(self, module_name: str) -> Optional[ModuleInfo]: ...
+    def run_module_refresh_script(self, module: ModuleInfo, ...) -> None: ...
 	def get_module_init_yaml(self, module_path: pathlib.Path) -> dict[str, Any]: ...
 	def update_module_init_yaml(self, module_path: pathlib.Path, data: dict[str, Any]) -> None: ...
 	def update_module_init_yaml_field(self, module_path: pathlib.Path, key: str, value: Any) -> None: ...

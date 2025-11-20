@@ -28,12 +28,22 @@ class ModuleInfo:
     shows_in_workspace: Optional[bool] = None
 
     def initializer_path(self) -> Path:
-        """Return the expected __init__.py path for this module."""
         return self.path / "__init__.py"
 
     def has_initializer(self) -> bool:
-        """Return True if __init__.py exists for this module."""
         return self.initializer_path().exists()
+
+    def refresh_script_path(self) -> Path:
+        return self.path / "refresh.py"
+
+    def has_refresh_script(self) -> bool:
+        return self.refresh_script_path().exists()
+    
+    def get_instructions_path(self) -> Path:
+        return self.module_type.path / f"{self.name}.instructions.md"
+    
+    def has_instructions(self) -> bool:
+        return self.get_instructions_path().exists()
 
 
 @dataclass
@@ -218,6 +228,15 @@ class ModulesController:
         data[key] = value
         YamlReader.write_yaml(init_file, data)
 
+    def get_module_by_name(self, module_name: str) -> Optional[ModuleInfo]:
+        """Find a module by its name (case-insensitive)."""
+        report = self.list_all_modules()
+        target_name = module_name.lower().strip()
+        for module in report.modules:
+            if module.name.lower() == target_name:
+                return module
+        return None
+
     def run_module_initializer(
         self,
         module: ModuleInfo,
@@ -245,6 +264,34 @@ class ModulesController:
         except subprocess.CalledProcessError as exc:
             detail = exc.stderr or exc.stdout or str(exc)
             raise ADHDError(f"Initializer failed for {module.name}: {detail}") from exc
+
+    def run_module_refresh_script(
+        self,
+        module: ModuleInfo,
+        *,
+        project_root: Optional[Path] = None,
+        logger: Optional[Logger] = None,
+    ) -> None:
+        """Execute the refresh.py for a single module if present."""
+        if not module.has_refresh_script():
+            return
+
+        target_root = Path(project_root).resolve() if project_root else self.root_path
+        log = logger or self.logger
+        refresh_py = module.refresh_script_path()
+        cmd = [sys.executable, str(refresh_py)]
+        try:
+            log.info(f"Running refresh script for {module.name}")
+            subprocess.run(
+                cmd,
+                cwd=str(target_root),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr or exc.stdout or str(exc)
+            raise ADHDError(f"Refresh script failed for {module.name}: {detail}") from exc
 
     def run_initializers(
         self,

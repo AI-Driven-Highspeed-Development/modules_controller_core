@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from dataclasses import dataclass, field
@@ -15,6 +16,12 @@ from cores.modules_controller_core.module_issues import (
     create_issues,
 )
 from cores.exceptions_core.adhd_exceptions import ADHDError
+from cores.workspace_core.workspace_builder import WorkspaceBuilder, WorkspaceBuildingStep
+
+class WorkspaceGenerationMode(str, Enum):
+    DEFAULT = "default"
+    INCLUDE_ALL = "include_all"
+    IGNORE_OVERRIDES = "ignore_overrides"
 
 @dataclass
 class ModuleInfo:
@@ -257,12 +264,10 @@ class ModulesController:
             subprocess.run(
                 cmd,
                 cwd=str(target_root),
-                capture_output=True,
-                text=True,
                 check=True,
             )
         except subprocess.CalledProcessError as exc:
-            detail = exc.stderr or exc.stdout or str(exc)
+            detail = str(exc)
             raise ADHDError(f"Initializer failed for {module.name}: {detail}") from exc
 
     def run_module_refresh_script(
@@ -285,12 +290,10 @@ class ModulesController:
             subprocess.run(
                 cmd,
                 cwd=str(target_root),
-                capture_output=True,
-                text=True,
                 check=True,
             )
         except subprocess.CalledProcessError as exc:
-            detail = exc.stderr or exc.stdout or str(exc)
+            detail = str(exc)
             raise ADHDError(f"Refresh script failed for {module.name}: {detail}") from exc
 
     def run_initializers(
@@ -312,3 +315,66 @@ class ModulesController:
                 project_root=project_root,
                 logger=logger,
             )
+
+    def generate_workspace_file(
+        self,
+        mode: WorkspaceGenerationMode = WorkspaceGenerationMode.DEFAULT,
+    ) -> Path:
+        """Generate a VS Code workspace file listing modules based on the selected mode."""
+        report = self.list_all_modules()
+        workspace_path = self.root_path / f"{self.root_path.name}.code-workspace"
+        
+        folder_entries: List[Dict[str, str]] = []
+        seen_paths: set[str] = set()
+
+        for module in report.modules:
+            is_visible = False
+            
+            if mode == WorkspaceGenerationMode.INCLUDE_ALL:
+                is_visible = True
+            elif mode == WorkspaceGenerationMode.IGNORE_OVERRIDES:
+                is_visible = module.module_type.shows_in_workspace
+            else: # DEFAULT
+                is_visible = module.shows_in_workspace
+                if is_visible is None:
+                    is_visible = module.module_type.shows_in_workspace
+
+            if not is_visible:
+                continue
+
+            try:
+                relative_path = module.path.relative_to(self.root_path)
+            except ValueError:
+                self.logger.warning(
+                    f"Module path {module.path} is not under project root {self.root_path}. Skipping workspace entry."
+                )
+                continue
+            
+            folder_path = f"./{relative_path.as_posix()}"
+            if folder_path not in seen_paths:
+                folder_entries.append({"path": folder_path})
+                seen_paths.add(folder_path)
+
+        if "." not in seen_paths:
+            folder_entries.append({"path": "."})
+
+        builder = WorkspaceBuilder(str(workspace_path))
+        builder.add_step(
+            WorkspaceBuildingStep(
+                target=[],
+                content={
+                    "folders": folder_entries,
+                    "settings": {
+                        "python.analysis.extraPaths": [
+                            "../../../",
+                            "../../",
+                            "../",
+                        ],
+                    },
+                },
+            )
+        )
+        workspace_data = builder.build_workspace()
+        builder.write_workspace(workspace_data)
+        self.logger.info(f"Workspace file created at {workspace_path}")
+        return workspace_path

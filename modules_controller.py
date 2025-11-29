@@ -16,7 +16,7 @@ from cores.modules_controller_core.module_issues import (
     create_issues,
 )
 from cores.exceptions_core.adhd_exceptions import ADHDError
-from cores.workspace_core.workspace_builder import WorkspaceBuilder, WorkspaceBuildingStep
+
 
 class WorkspaceGenerationMode(str, Enum):
     DEFAULT = "default"
@@ -320,6 +320,7 @@ class ModulesController:
         self,
         mode: WorkspaceGenerationMode = WorkspaceGenerationMode.DEFAULT,
     ) -> Path:
+        from cores.workspace_core.workspace_builder import WorkspaceBuilder, WorkspaceBuildingStep
         """Generate a VS Code workspace file listing modules based on the selected mode."""
         report = self.list_all_modules()
         workspace_path = self.root_path / f"{self.root_path.name}.code-workspace"

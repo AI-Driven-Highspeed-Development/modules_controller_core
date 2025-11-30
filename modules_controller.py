@@ -236,8 +236,16 @@ class ModulesController:
         YamlReader.write_yaml(init_file, data)
 
     def get_module_by_name(self, module_name: str) -> Optional[ModuleInfo]:
-        """Find a module by its name (case-insensitive)."""
+        """Find a module by its name (case-insensitive).
+        
+        Supports 'type/name' format (e.g. 'managers/config_manager') by stripping the prefix.
+        """
         report = self.list_all_modules()
+        
+        # Handle 'type/name' format
+        if "/" in module_name:
+            module_name = module_name.split("/")[-1]
+            
         target_name = module_name.lower().strip()
         for module in report.modules:
             if module.name.lower() == target_name:
@@ -319,6 +327,7 @@ class ModulesController:
     def generate_workspace_file(
         self,
         mode: WorkspaceGenerationMode = WorkspaceGenerationMode.DEFAULT,
+        overrides: Optional[Dict[str, bool]] = None,
     ) -> Path:
         from cores.workspace_core.workspace_builder import WorkspaceBuilder, WorkspaceBuildingStep
         """Generate a VS Code workspace file listing modules based on the selected mode."""
@@ -331,7 +340,9 @@ class ModulesController:
         for module in report.modules:
             is_visible = False
             
-            if mode == WorkspaceGenerationMode.INCLUDE_ALL:
+            if overrides and module.name in overrides:
+                is_visible = overrides[module.name]
+            elif mode == WorkspaceGenerationMode.INCLUDE_ALL:
                 is_visible = True
             elif mode == WorkspaceGenerationMode.IGNORE_OVERRIDES:
                 is_visible = module.module_type.shows_in_workspace

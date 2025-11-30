@@ -367,9 +367,7 @@ class ModulesController:
                     "folders": folder_entries,
                     "settings": {
                         "python.analysis.extraPaths": [
-                            "../../../",
-                            "../../",
-                            "../",
+                            self.root_path.as_posix(),
                         ],
                     },
                 },

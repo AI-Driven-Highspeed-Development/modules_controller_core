@@ -7,38 +7,70 @@ from pathlib import Path
 
 
 class ModuleIssueCode(str, Enum):
-    MISSING_INIT_YAML = "missing_init_yaml"
+    MISSING_INIT_YAML = "missing_init_yaml"  # Legacy: kept for compatibility, also used for missing pyproject.toml
+    MISSING_PYPROJECT = "missing_pyproject"  # New: explicitly for pyproject.toml
     MISSING_VERSION = "missing_version"
     MISSING_TYPE = "missing_type"
     MISSING_REQUIREMENTS = "missing_requirements"
     MISSING_REPO_URL = "missing_repo_url"
+    # Layer validation codes
+    MISSING_LAYER = "missing_layer"
+    INVALID_LAYER = "invalid_layer"
+    INVALID_TYPE_LAYER_COMBO = "invalid_type_layer_combo"
+    # Doctor-specific codes
+    ORPHANED_INIT_YAML = "orphaned_init_yaml"  # Has both init.yaml and pyproject.toml
+    MISSING_ADHD_SECTION = "missing_adhd_section"  # pyproject.toml missing [tool.adhd]
+    INVALID_TOML = "invalid_toml"  # pyproject.toml is not valid TOML
 
 
 
 # Map keys to issue codes for simple presence validation
+# NOTE: repo_url is intentionally NOT required - internal modules don't need GitHub URLs
 REQUIRED_INIT_KEYS: Dict[str, ModuleIssueCode] = {
     "version": ModuleIssueCode.MISSING_VERSION,
     "type": ModuleIssueCode.MISSING_TYPE,
     "requirements": ModuleIssueCode.MISSING_REQUIREMENTS,
-    "repo_url": ModuleIssueCode.MISSING_REPO_URL,
 }
 
 # Message templates per issue code (use {key} placeholder)
 ISSUE_MESSAGES: Dict[ModuleIssueCode, str] = {
     ModuleIssueCode.MISSING_INIT_YAML: (
-        "Module is missing init.yaml. Please add an init.yaml file with the required metadata keys."
+        "Module is missing configuration file. Please add a pyproject.toml with [tool.adhd] section."
+    ),
+    ModuleIssueCode.MISSING_PYPROJECT: (
+        "Module is missing pyproject.toml. Please add a pyproject.toml with [tool.adhd] section."
     ),
     ModuleIssueCode.MISSING_VERSION: (
-        "Module is missing '{key}' in init.yaml. Specify a semantic version such as '0.0.1' under the '{key}' key."
+        "Module is missing '{key}' in pyproject.toml. Specify a semantic version such as '0.0.1' under [project].version."
     ),
     ModuleIssueCode.MISSING_TYPE: (
-        "Module is missing '{key}' in init.yaml. Set the module's type (core, manager, plugin, util, mcp) under the '{key}' key."
+        "Module is missing '{key}' in pyproject.toml. Set the module's type (core, manager, plugin, util, mcp) under [tool.adhd].type."
     ),
     ModuleIssueCode.MISSING_REQUIREMENTS: (
-        "Module is missing '{key}' in init.yaml. Include a list (can be empty) of required ADHD modules under the '{key}' key."
+        "Module is missing '{key}' in pyproject.toml. Include a list (can be empty) of dependencies under [project].dependencies."
     ),
     ModuleIssueCode.MISSING_REPO_URL: (
-        "Module is missing '{key}' in init.yaml. Please add a canonical repository URL under the '{key}' key."
+        "Module is missing '{key}' in pyproject.toml. Please add a canonical repository URL under [project.urls].Repository."
+    ),
+    # Layer validation messages
+    ModuleIssueCode.MISSING_LAYER: (
+        "Module is missing 'layer' in pyproject.toml. Set the module's layer (foundation, runtime, dev) under [tool.adhd].layer."
+    ),
+    ModuleIssueCode.INVALID_LAYER: (
+        "Module has invalid layer value '{key}'. Valid values are: foundation, runtime, dev."
+    ),
+    ModuleIssueCode.INVALID_TYPE_LAYER_COMBO: (
+        "Module has invalid type-layer combination. Core modules cannot be '{key}' layer. Valid layers for cores: foundation, dev."
+    ),
+    # Doctor-specific messages
+    ModuleIssueCode.ORPHANED_INIT_YAML: (
+        "Module has orphaned init.yaml (deprecated). Both init.yaml and pyproject.toml exist. Run 'adhd migrate --module {key}' to remove init.yaml."
+    ),
+    ModuleIssueCode.MISSING_ADHD_SECTION: (
+        "Module pyproject.toml is missing [tool.adhd] section. Add type configuration under [tool.adhd]."
+    ),
+    ModuleIssueCode.INVALID_TOML: (
+        "Module pyproject.toml is invalid TOML: {key}"
     ),
 }
 

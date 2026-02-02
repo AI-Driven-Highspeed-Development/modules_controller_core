@@ -4,6 +4,46 @@ from pathlib import Path
 from typing import Optional
 
 
+class ModuleLayer(str, Enum):
+    """Layer classification for modules.
+    
+    - FOUNDATION: Bootstrap modules required for framework initialization
+    - RUNTIME: Production application modules
+    - DEV: Development-only tools and utilities
+    """
+    FOUNDATION = "foundation"
+    RUNTIME = "runtime"
+    DEV = "dev"
+    
+    @classmethod
+    def from_string(cls, value: str | None) -> "ModuleLayer | None":
+        """Convert string to ModuleLayer, returning None for invalid values."""
+        if value is None:
+            return None
+        try:
+            return cls(value.lower())
+        except ValueError:
+            return None
+    
+    @classmethod
+    def validate(cls, value: str | None) -> bool:
+        """Check if a string is a valid layer value."""
+        if value is None:
+            return False
+        return value.lower() in [layer.value for layer in cls]
+    
+    @classmethod
+    def get_valid_layers_for_type(cls, module_type: "ModuleTypeEnum") -> list["ModuleLayer"]:
+        """Get valid layers for a given module type.
+        
+        Cores can only be FOUNDATION or DEV (never RUNTIME).
+        Other types can be any layer.
+        """
+        if module_type == ModuleTypeEnum.CORE:
+            return [cls.FOUNDATION, cls.DEV]
+        return list(cls)
+
+
 class ModuleTypeEnum(str, Enum):
     CORE = ("core", "cores")
     MANAGER = ("manager", "managers")

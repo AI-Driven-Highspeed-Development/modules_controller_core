@@ -6,7 +6,7 @@ import sys
 import tomllib
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 from dataclasses import dataclass, field
 from logger_util import Logger
 from yaml_reading_core import YamlReadingCore as YamlReader
@@ -18,6 +18,9 @@ from .module_issues import (
     create_issues,
 )
 from exceptions_core import ADHDError
+
+if TYPE_CHECKING:
+    from .module_filter import ModuleFilter
 
 
 class DoctorIssueSeverity(str, Enum):
@@ -489,6 +492,7 @@ class ModulesController:
         self,
         mode: WorkspaceGenerationMode = WorkspaceGenerationMode.DEFAULT,
         overrides: Optional[Dict[str, bool]] = None,
+        module_filter: Optional["ModuleFilter"] = None,
     ) -> Path:
         """Generate a VS Code workspace file listing modules based on the selected mode.
         
@@ -498,16 +502,22 @@ class ModulesController:
         Args:
             mode: Controls visibility behavior (DEFAULT, INCLUDE_ALL, IGNORE_OVERRIDES)
             overrides: Optional dict of module_name -> visibility override
+            module_filter: Optional ModuleFilter to pre-filter modules before visibility check
             
         Returns:
             Path to the generated workspace file.
         """
         report = self.list_all_modules()
+        modules = report.modules
+        
+        # Apply module filter first (if provided)
+        if module_filter and module_filter.has_filters:
+            modules = module_filter.filter_modules(modules)
         
         # Build list of visible modules with their paths
         visible_modules: List[Dict[str, Any]] = []
 
-        for module in report.modules:
+        for module in modules:
             is_visible = False
             
             if overrides and module.name in overrides:

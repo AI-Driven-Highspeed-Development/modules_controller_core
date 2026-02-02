@@ -502,25 +502,38 @@ class ModulesController:
         Args:
             mode: Controls visibility behavior (DEFAULT, INCLUDE_ALL, IGNORE_OVERRIDES)
             overrides: Optional dict of module_name -> visibility override
-            module_filter: Optional ModuleFilter to pre-filter modules before visibility check
+            module_filter: Optional ModuleFilter to pre-filter modules. When provided with
+                filters, the filtered result is included directly (overrides default visibility).
             
         Returns:
             Path to the generated workspace file.
+            
+        Note:
+            When an explicit filter is provided (module_filter with has_filters=True),
+            the filter result is the final word - all filtered modules are included
+            regardless of their shows_in_workspace setting. This allows explicit filter
+            flags like `-i foundation` or `-i core` to include modules that are normally
+            hidden in the default workspace view.
         """
         report = self.list_all_modules()
         modules = report.modules
         
         # Apply module filter first (if provided)
-        if module_filter and module_filter.has_filters:
+        # When an explicit filter is provided, the filter result is the final word
+        # (skip visibility checks - user explicitly requested these modules)
+        filter_provided = module_filter is not None and module_filter.has_filters
+        if filter_provided:
             modules = module_filter.filter_modules(modules)
         
         # Build list of visible modules with their paths
         visible_modules: List[Dict[str, Any]] = []
 
         for module in modules:
-            is_visible = False
-            
-            if overrides and module.name in overrides:
+            # If explicit filter was provided, include all filtered modules directly
+            # (filter overrides default visibility)
+            if filter_provided:
+                is_visible = True
+            elif overrides and module.name in overrides:
                 is_visible = overrides[module.name]
             elif mode == WorkspaceGenerationMode.INCLUDE_ALL:
                 is_visible = True

@@ -16,6 +16,11 @@ Repository = "https://github.com/AI-Driven-Highspeed-Development/modules_control
 type = "core"
 layer = "foundation"
 
+[tool.uv.sources]
+logger-util = { git = "https://github.com/AI-Driven-Highspeed-Development/Logger-Util.git" }
+exceptions-core = { git = "https://github.com/AI-Driven-Highspeed-Development/exceptions_core.git" }
+yaml-reading-core = { git = "https://github.com/AI-Driven-Highspeed-Development/yaml_reading_core.git" }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -12,7 +12,6 @@ class ModuleIssueCode(str, Enum):
     MISSING_VERSION = "missing_version"
     MISSING_TYPE = "missing_type"
     MISSING_REQUIREMENTS = "missing_requirements"
-    MISSING_REPO_URL = "missing_repo_url"
     # Layer validation codes
     MISSING_LAYER = "missing_layer"
     INVALID_LAYER = "invalid_layer"
@@ -21,15 +20,17 @@ class ModuleIssueCode(str, Enum):
     ORPHANED_INIT_YAML = "orphaned_init_yaml"  # Has both init.yaml and pyproject.toml
     MISSING_ADHD_SECTION = "missing_adhd_section"  # pyproject.toml missing [tool.adhd]
     INVALID_TOML = "invalid_toml"  # pyproject.toml is not valid TOML
+    # Workspace validation codes
+    MISSING_WORKSPACE_SOURCE = "missing_workspace_source"  # Module not in [tool.uv.sources]
+    MISSING_WORKSPACE_MEMBER = "missing_workspace_member"  # Module folder not matched by members glob
 
 
 
 # Map keys to issue codes for simple presence validation
 # NOTE: repo_url is intentionally NOT required - internal modules don't need GitHub URLs
+# NOTE: type is no longer required - it's inferred from folder path
 REQUIRED_INIT_KEYS: Dict[str, ModuleIssueCode] = {
     "version": ModuleIssueCode.MISSING_VERSION,
-    "type": ModuleIssueCode.MISSING_TYPE,
-    "requirements": ModuleIssueCode.MISSING_REQUIREMENTS,
 }
 
 # Message templates per issue code (use {key} placeholder)
@@ -48,9 +49,6 @@ ISSUE_MESSAGES: Dict[ModuleIssueCode, str] = {
     ),
     ModuleIssueCode.MISSING_REQUIREMENTS: (
         "Module is missing '{key}' in pyproject.toml. Include a list (can be empty) of dependencies under [project].dependencies."
-    ),
-    ModuleIssueCode.MISSING_REPO_URL: (
-        "Module is missing '{key}' in pyproject.toml. Please add a canonical repository URL under [project.urls].Repository."
     ),
     # Layer validation messages
     ModuleIssueCode.MISSING_LAYER: (
@@ -71,6 +69,13 @@ ISSUE_MESSAGES: Dict[ModuleIssueCode, str] = {
     ),
     ModuleIssueCode.INVALID_TOML: (
         "Module pyproject.toml is invalid TOML: {key}"
+    ),
+    # Workspace validation messages
+    ModuleIssueCode.MISSING_WORKSPACE_SOURCE: (
+        "Module '{key}' is not declared in root pyproject.toml [tool.uv.sources]. Add: {key} = {{ workspace = true }}"
+    ),
+    ModuleIssueCode.MISSING_WORKSPACE_MEMBER: (
+        "Module folder not matched by [tool.uv.workspace].members globs. Module at '{key}' may not be discovered by uv."
     ),
 }
 

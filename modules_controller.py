@@ -10,7 +10,13 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 from dataclasses import dataclass, field
 from logger_util import Logger
 from yaml_reading_core import YamlReadingCore as YamlReader
-from .module_types import ModuleType, ModuleTypes, ModuleLayer, ModuleTypeEnum
+from .module_types import (
+    ModuleLayer,
+    MODULE_FOLDERS,
+    HIDDEN_WORKSPACE_FOLDERS,
+    folder_from_path,
+    folder_shows_in_workspace,
+)
 from .module_issues import (
     ModuleIssue,
     ModuleIssueCode,
@@ -45,6 +51,7 @@ class DoctorReport:
     """Report from the doctor command."""
     issues: List[DoctorIssue] = field(default_factory=list)
     modules_checked: int = 0
+    workspace_members_declared: int = 0  # Count of members in root pyproject.toml
     
     @property
     def error_count(self) -> int:
@@ -81,10 +88,25 @@ class WorkspaceGenerationMode(str, Enum):
 
 @dataclass
 class ModuleInfo:
+    """Information about a discovered module.
+    
+    Attributes:
+        name: Module name (e.g., 'config_manager')
+        version: Semantic version string
+        folder: Parent folder name (e.g., 'cores', 'managers', 'mcps')
+        path: Absolute path to module directory
+        is_mcp: Whether this is an MCP module (mcp=true in pyproject.toml)
+        repo_url: Optional GitHub repository URL
+        requirements: List of dependencies from pyproject.toml
+        issues: List of validation issues
+        shows_in_workspace: Override for workspace visibility (None = use folder default)
+        layer: Module layer (foundation, runtime, dev)
+    """
     name: str
     version: str
-    module_type: ModuleType
+    folder: str
     path: Path
+    is_mcp: bool = False
     repo_url: Optional[str] = None
     requirements: List[str] = field(default_factory=list)
     issues: List[ModuleIssue] = field(default_factory=list)
@@ -104,10 +126,14 @@ class ModuleInfo:
         return self.refresh_script_path().exists()
     
     def get_instructions_path(self) -> Path:
-        return self.module_type.path / f"{self.name}.instructions.md"
+        return self.path / f"{self.name}.instructions.md"
     
     def has_instructions(self) -> bool:
         return self.get_instructions_path().exists()
+    
+    def default_shows_in_workspace(self) -> bool:
+        """Return default workspace visibility based on folder."""
+        return folder_shows_in_workspace(self.folder)
 
 
 @dataclass
@@ -134,7 +160,7 @@ class ModulesReport:
                 display_path = module.path.relative_to(self.root_path)
             except ValueError:
                 display_path = module.path
-            logger.info(f"- {module.name} ({module.module_type.name}) -> {display_path}")
+            logger.info(f"- {module.name} ({module.folder}) -> {display_path}")
             for issue in module.issues:
                 logger.info(f"  [{issue.code}] {issue.message}")
 
@@ -157,7 +183,6 @@ class ModulesController:
             return
         self.root_path = root
         self.logger = Logger(name=__class__.__name__)
-        self.module_types = ModuleTypes(root_path=root)
         self._report: Optional[ModulesReport] = None
         self._initialized = True
     
@@ -168,16 +193,17 @@ class ModulesController:
         return self._report
 
     def scan_all_modules(self) -> ModulesReport:
-        """Scan module type folders and return a report for each discovered module.
+        """Scan module folders and return a report for each discovered module.
 
-        A module is any immediate subdirectory of one of the known type roots
+        A module is any immediate subdirectory of one of the known folder roots
         (cores/, managers/, plugins/, utils/, mcps/) that contains a pyproject.toml
         with [tool.adhd] configuration.
         """
         modules: List[ModuleInfo] = []
         issued_modules: List[ModuleInfo] = []
-        for mt in self.module_types.get_all_types():
-            base_dir = (mt.path if isinstance(mt.path, Path) else Path(str(mt.path))).resolve()
+        
+        for folder_name in MODULE_FOLDERS:
+            base_dir = (self.root_path / folder_name).resolve()
             if not base_dir.exists() or not base_dir.is_dir():
                 continue
             for child in base_dir.iterdir():
@@ -195,8 +221,9 @@ class ModulesController:
                     mi = ModuleInfo(
                         name=child.name,
                         version="unknown",
-                        module_type=mt,
+                        folder=folder_name,
                         path=child,
+                        is_mcp=False,
                         requirements=[]
                     )
                     issue = create_issue(
@@ -222,17 +249,30 @@ class ModulesController:
 
                 info: Dict[str, Any] = {
                     "version": project_data.get("version"),
-                    "type": adhd_data.get("type"),
                     "repo_url": urls_data.get("Repository"),
                     "requirements": project_data.get("dependencies", []),
                     "shows_in_workspace": adhd_data.get("shows_in_workspace"),
                     "layer": adhd_data.get("layer"),
                 }
+                
+                # Read mcp flag (boolean, defaults to False)
+                is_mcp = adhd_data.get("mcp", False)
+                if not isinstance(is_mcp, bool):
+                    is_mcp = str(is_mcp).lower() == "true"
 
-                issues = create_issues(info, module_path=pyproject_file)
+                # Create issues for missing required fields (no longer checking 'type')
+                issues: List[ModuleIssue] = []
                 requirements_value = info.get("requirements")
                 if not isinstance(requirements_value, list):
                     requirements_value = []
+                
+                # Check version
+                if not info.get("version"):
+                    issues.append(create_issue(
+                        ModuleIssueCode.MISSING_VERSION,
+                        module_path=pyproject_file,
+                        key="version",
+                    ))
 
                 # Validate and parse layer
                 layer_str = info.get("layer")
@@ -255,8 +295,8 @@ class ModulesController:
                     issues.append(issue)
                 else:
                     layer_value = ModuleLayer.from_string(layer_str)
-                    # Validate type-layer combination (cores cannot be runtime)
-                    if mt.enum == ModuleTypeEnum.CORE and layer_value == ModuleLayer.RUNTIME:
+                    # Validate folder-layer combination (cores cannot be runtime)
+                    if folder_name == "cores" and layer_value == ModuleLayer.RUNTIME:
                         issue = create_issue(
                             ModuleIssueCode.INVALID_TYPE_LAYER_COMBO,
                             module_path=pyproject_file,
@@ -268,8 +308,9 @@ class ModulesController:
                 mi = ModuleInfo(
                     name=name,
                     version=str(info["version"]) if info["version"] is not None else "0.0.0",
-                    module_type=mt,
+                    folder=folder_name,
                     path=child,
+                    is_mcp=is_mcp,
                     repo_url=str(info["repo_url"]) if isinstance(info["repo_url"], str) and info["repo_url"].strip() else None,
                     requirements=requirements_value,
                     shows_in_workspace=info["shows_in_workspace"] if isinstance(info["shows_in_workspace"], bool) else None,
@@ -512,7 +553,7 @@ class ModulesController:
             When an explicit filter is provided (module_filter with has_filters=True),
             the filter result is the final word - all filtered modules are included
             regardless of their shows_in_workspace setting. This allows explicit filter
-            flags like `-i foundation` or `-i core` to include modules that are normally
+            flags like `-i foundation` or `-i cores` to include modules that are normally
             hidden in the default workspace view.
         """
         report = self.list_all_modules()
@@ -538,11 +579,11 @@ class ModulesController:
             elif mode == WorkspaceGenerationMode.INCLUDE_ALL:
                 is_visible = True
             elif mode == WorkspaceGenerationMode.IGNORE_OVERRIDES:
-                is_visible = module.module_type.shows_in_workspace
+                is_visible = module.default_shows_in_workspace()
             else:  # DEFAULT
                 is_visible = module.shows_in_workspace
                 if is_visible is None:
-                    is_visible = module.module_type.shows_in_workspace
+                    is_visible = module.default_shows_in_workspace()
 
             if not is_visible:
                 continue
@@ -714,7 +755,6 @@ class ModulesController:
         
         # Add ADHD section
         lines.append("[tool.adhd]")
-        lines.append(f'type = "{module_type}"')
         if shows_in_workspace is not None:
             lines.append(f'shows_in_workspace = {"true" if shows_in_workspace else "false"}')
         lines.append("")
@@ -752,9 +792,9 @@ class ModulesController:
         """
         results: List[MigrateResult] = []
         
-        # Find all directories with init.yaml
-        for mt in self.module_types.get_all_types():
-            base_dir = Path(mt.path).resolve()
+        # Find all directories with init.yaml in known module folders
+        for folder in MODULE_FOLDERS:
+            base_dir = (self.root_path / folder).resolve()
             if not base_dir.exists() or not base_dir.is_dir():
                 continue
             
@@ -787,14 +827,22 @@ class ModulesController:
         - [project] section has name and version
         - [tool.adhd] section exists
         - No orphaned init.yaml files
+        - Workspace validation: modules declared in root pyproject.toml
         
         Returns:
             DoctorReport with all issues found
         """
         report = DoctorReport()
         
-        for mt in self.module_types.get_all_types():
-            base_dir = Path(mt.path).resolve()
+        # First, get workspace info from root pyproject.toml
+        workspace_sources = self._get_workspace_sources()
+        report.workspace_members_declared = len(workspace_sources)
+        
+        # Collect all discovered modules for workspace validation
+        discovered_modules: List[Tuple[Path, str]] = []  # (path, package_name)
+        
+        for folder in MODULE_FOLDERS:
+            base_dir = (self.root_path / folder).resolve()
             if not base_dir.exists() or not base_dir.is_dir():
                 continue
             
@@ -805,8 +853,63 @@ class ModulesController:
                 report.modules_checked += 1
                 issues = self._check_module_health(child)
                 report.issues.extend(issues)
+                
+                # Track module for workspace validation (convert name to package format)
+                package_name = child.name.replace("_", "-")
+                discovered_modules.append((child, package_name))
+        
+        # Workspace validation: check each module is in [tool.uv.sources]
+        workspace_issues = self._validate_workspace_members(discovered_modules, workspace_sources)
+        report.issues.extend(workspace_issues)
         
         return report
+
+    def _get_workspace_sources(self) -> set[str]:
+        """Get the set of package names declared in root pyproject.toml [tool.uv.sources].
+        
+        Returns:
+            Set of package names (hyphenated format)
+        """
+        root_pyproject = self.root_path / "pyproject.toml"
+        if not root_pyproject.exists():
+            return set()
+        
+        try:
+            with root_pyproject.open("rb") as f:
+                data = tomllib.load(f)
+            
+            sources = data.get("tool", {}).get("uv", {}).get("sources", {})
+            return set(sources.keys())
+        except (tomllib.TOMLDecodeError, KeyError):
+            return set()
+
+    def _validate_workspace_members(
+        self,
+        discovered_modules: List[Tuple[Path, str]],
+        workspace_sources: set[str],
+    ) -> List[DoctorIssue]:
+        """Validate that all discovered modules are declared in workspace sources.
+        
+        Args:
+            discovered_modules: List of (path, package_name) tuples
+            workspace_sources: Set of package names from [tool.uv.sources]
+            
+        Returns:
+            List of DoctorIssue for any missing declarations
+        """
+        issues: List[DoctorIssue] = []
+        
+        for module_path, package_name in discovered_modules:
+            if package_name not in workspace_sources:
+                issues.append(DoctorIssue(
+                    severity=DoctorIssueSeverity.WARNING,
+                    code=ModuleIssueCode.MISSING_WORKSPACE_SOURCE,
+                    message=f"Module '{package_name}' is not declared in root pyproject.toml [tool.uv.sources]",
+                    path=module_path,
+                    suggestion=f"Add to root pyproject.toml: {package_name} = {{ workspace = true }}",
+                ))
+        
+        return issues
 
     def _check_module_health(self, module_path: Path) -> List[DoctorIssue]:
         """Check health of a single module directory.

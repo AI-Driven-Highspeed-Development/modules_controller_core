@@ -12,7 +12,13 @@ from .modules_controller import (
     DoctorReport,
     MigrateResult,
 )
-from .module_types import ModuleType, ModuleTypes, ModuleLayer, ModuleTypeEnum
+from .module_types import (
+    ModuleLayer,
+    MODULE_FOLDERS,
+    HIDDEN_WORKSPACE_FOLDERS,
+    folder_from_path,
+    folder_shows_in_workspace,
+)
 from .module_issues import ModuleIssue, ModuleIssueCode
 from .dependency_walker import (
     DependencyWalker,
@@ -34,10 +40,11 @@ __all__ = [
     "ModulesController",
     "ModuleInfo",
     "WorkspaceGenerationMode",
-    "ModuleType",
-    "ModuleTypes",
     "ModuleLayer",
-    "ModuleTypeEnum",
+    "MODULE_FOLDERS",
+    "HIDDEN_WORKSPACE_FOLDERS",
+    "folder_from_path",
+    "folder_shows_in_workspace",
     "ModuleIssue",
     "ModuleIssueCode",
     "DoctorIssueSeverity",

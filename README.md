@@ -4,16 +4,16 @@ Central registry that scans every module folder, validates metadata, and surface
 
 ## Overview
 - Discovers module directories under `cores/`, `managers/`, `plugins/`, `utils/`, and `mcps/`
-- Loads each module’s `init.yaml` using YAML Reading Core and records key metadata
-- Classifies modules via strongly typed `ModuleType` objects and enumerates issues per module
+- Loads module metadata from `pyproject.toml` (with legacy `init.yaml` fallback)
+- Derives module category from folder location and reads `layer` from `[tool.adhd]`
 - Provides cached `ModulesReport` objects for fast reuse by CLIs and other automation
 
 ## Features
 - **Single scan, cached results** – `list_all_modules()` exposes the previous scan unless `scan_all_modules()` is called again
-- **Issue catalog** – `ModuleIssueCode` enumerates missing metadata (version, type, requirements, repo_url, init.yaml)
-- **Rich module info** – `ModuleInfo` stores name, version, module type, repo URL, path, requirements, and attached issues
-- **Helpers for init.yaml** – update specific keys or overwrite entire metadata files via `update_module_init_yaml*`
-- **Module type registry** – `ModuleTypes` exposes per-type paths, names, and plural forms for other tooling
+- **Issue catalog** – `ModuleIssueCode` enumerates missing metadata (version, layer, requirements, repo_url)
+- **Rich module info** – `ModuleInfo` stores name, version, layer, folder, repo URL, path, requirements, and attached issues
+- **Helpers for pyproject.toml** – update specific keys or read metadata from `[tool.adhd]` section
+- **Folder detection** – derives module folder (cores/managers/utils/plugins/mcps) from filesystem path
 - **Refresh Script Support** – Detects and executes `refresh.py` scripts via `run_module_refresh_script`.
 - **Module Lookup** – Find modules by name using `get_module_by_name`.
 
@@ -30,16 +30,13 @@ report = controller.list_all_modules()
 print(f"Total modules: {len(report.modules)}")
 for module in report.issued_modules:
 	issue_codes = ", ".join(issue.code.value for issue in module.issues)
-	print(f"{module.name} ({module.module_type.name}) -> {issue_codes}")
+	print(f"{module.name} ({module.folder}/{module.layer}) -> {issue_codes}")
 
 # Find a specific module
 logger_module = controller.get_module_by_name("logger_util")
 if logger_module:
     # Run its refresh script
     controller.run_module_refresh_script(logger_module)
-
-# Update a field in init.yaml when needed
-controller.update_module_init_yaml_field(module.path, "repo_url", "https://github.com/org/module.git")
 ```
 
 ## API
@@ -49,14 +46,16 @@ controller.update_module_init_yaml_field(module.path, "repo_url", "https://githu
 class ModuleInfo:
 	name: str
 	version: str
-	module_type: ModuleType
+	folder: str          # cores | managers | utils | plugins | mcps
+	layer: str           # foundation | runtime | dev
 	path: pathlib.Path
 	repo_url: str | None = None
+	is_mcp: bool = False  # True if mcp = true in [tool.adhd]
 	requirements: list[str] = field(default_factory=list)
 	issues: list[ModuleIssue] = field(default_factory=list)
-    shows_in_workspace: bool | None = None
-    def has_refresh_script(self) -> bool: ...
-    def has_initializer(self) -> bool: ...
+	shows_in_workspace: bool | None = None
+	def has_refresh_script(self) -> bool: ...
+	def has_initializer(self) -> bool: ...
 
 @dataclass
 class ModulesReport:
@@ -66,15 +65,8 @@ class ModulesReport:
 class ModulesController:
 	def list_all_modules(self) -> ModulesReport: ...
 	def scan_all_modules(self) -> ModulesReport: ...
-    def get_module_by_name(self, module_name: str) -> Optional[ModuleInfo]: ...
-    def run_module_refresh_script(self, module: ModuleInfo, ...) -> None: ...
-	def get_module_init_yaml(self, module_path: pathlib.Path) -> dict[str, Any]: ...
-	def update_module_init_yaml(self, module_path: pathlib.Path, data: dict[str, Any]) -> None: ...
-	def update_module_init_yaml_field(self, module_path: pathlib.Path, key: str, value: Any) -> None: ...
-
-class ModuleTypes:
-	def get_all_types(self) -> list[ModuleType]: ...
-	def get_module_type(self, name: ModuleTypeEnum | str) -> ModuleType: ...
+	def get_module_by_name(self, module_name: str) -> Optional[ModuleInfo]: ...
+	def run_module_refresh_script(self, module: ModuleInfo, ...) -> None: ...
 
 @dataclass
 class ModuleIssue:
@@ -87,16 +79,17 @@ class ModuleIssueCode(str, Enum): ...  # see module_issues.py for the full list
 
 ## Notes
 - `ModulesController` is a singleton; repeated instantiations reuse the cached report unless `scan_all_modules()` is invoked.
-- `ModuleInfo.module_type` stores the `ModuleType` instance, so use `.name` or `.enum` when logging.
+- `ModuleInfo.folder` is derived from the parent directory (e.g., `cores/`, `managers/`).
+- `ModuleInfo.layer` comes from `[tool.adhd].layer` in pyproject.toml.
 - Issue detection treats blank strings as missing values to align with metadata requirements.
 
 ## Requirements & prerequisites
 - No additional pip dependencies (relies on Python standard library plus other ADHD Framework cores)
 
 ## Troubleshooting
-- **Module missing from report** – ensure its directory is directly under one of the known type roots and not prefixed with `_` or `.`.
-- **Every module reports `missing_repo_url`** – run Module Creator Core or manually add `repo_url` to `init.yaml`.
-- **Unknown module type warnings** – check `init.yaml.type` matches one of the configured types or leave it blank to use the folder’s inferred type.
+- **Module missing from report** – ensure its directory is directly under one of the known folders and not prefixed with `_` or `.`.
+- **Every module reports `missing_repo_url`** – run Module Creator Core or manually add `repo_url` to `[tool.adhd]` in pyproject.toml.
+- **Missing layer warning** – ensure `[tool.adhd].layer` is set to `foundation`, `runtime`, or `dev` in pyproject.toml.
 
 ## Module structure
 
@@ -104,9 +97,9 @@ class ModuleIssueCode(str, Enum): ...  # see module_issues.py for the full list
 cores/modules_controller_core/
 ├─ __init__.py              # package marker
 ├─ modules_controller.py    # scanner + cache + report helpers
-├─ module_types.py          # ModuleTypeEnum + registry
+├─ module_filter.py         # filtering by folder, layer, etc.
 ├─ module_issues.py         # issue codes and helpers
-├─ init.yaml                # module metadata
+├─ pyproject.toml           # module metadata
 └─ README.md                # this file
 ```
 

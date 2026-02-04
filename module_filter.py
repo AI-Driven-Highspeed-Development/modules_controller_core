@@ -2,7 +2,8 @@
 
 This module provides the ModuleFilter class for filtering modules by:
 - layer: foundation, runtime, dev (with inheritance)
-- type: core, manager, plugin, util, mcp
+- folder: cores, managers, utils, plugins, mcps (path-based)
+- mcp: filter to MCP modules only (mcp = true flag)
 - state: dirty, unpushed, clean (git states)
 
 Filter modes:
@@ -18,7 +19,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
-from .module_types import ModuleLayer, ModuleTypeEnum
+from .module_types import ModuleLayer, MODULE_FOLDERS
 
 if TYPE_CHECKING:
     from .modules_controller import ModuleInfo
@@ -34,7 +35,8 @@ class FilterMode(str, Enum):
 class FilterDimension(str, Enum):
     """Dimensions that can be filtered."""
     LAYER = "layer"
-    TYPE = "type"
+    FOLDER = "folder"
+    MCP = "mcp"
     STATE = "state"
 
 
@@ -78,9 +80,17 @@ class ModuleFilter:
         f = ModuleFilter(mode=FilterMode.EXCLUDE)
         f.add_layer("dev")
         
-        # Require modules that are both managers AND dirty
+        # Filter by folder (path-based)
+        f = ModuleFilter(mode=FilterMode.INCLUDE)
+        f.add_folder("managers")
+        
+        # Filter to MCP modules only
+        f = ModuleFilter(mode=FilterMode.INCLUDE)
+        f.add_mcp()
+        
+        # Require modules that are both in managers AND dirty
         f = ModuleFilter(mode=FilterMode.REQUIRE)
-        f.add_type("manager")
+        f.add_folder("managers")
         f.add_state("dirty")
     """
     
@@ -89,7 +99,8 @@ class ModuleFilter:
     
     # Caches for resolved filter values
     _layer_filters: Set[ModuleLayer] = field(default_factory=set, init=False, repr=False)
-    _type_filters: Set[ModuleTypeEnum] = field(default_factory=set, init=False, repr=False)
+    _folder_filters: Set[str] = field(default_factory=set, init=False, repr=False)
+    _mcp_filter: bool = field(default=False, init=False, repr=False)
     _state_filters: Set[GitState] = field(default_factory=set, init=False, repr=False)
     
     def add_layer(self, layer: str, inherit: bool = True) -> "ModuleFilter":
@@ -114,18 +125,23 @@ class ModuleFilter:
         
         return self
     
-    def add_type(self, module_type: str) -> "ModuleFilter":
-        """Add a module type filter."""
-        try:
-            type_enum = ModuleTypeEnum(module_type.lower())
-        except ValueError:
+    def add_folder(self, folder: str) -> "ModuleFilter":
+        """Add a folder filter (cores, managers, utils, plugins, mcps)."""
+        folder_lower = folder.lower()
+        if folder_lower not in MODULE_FOLDERS:
             raise ValueError(
-                f"Invalid module type: {module_type}. "
-                f"Valid values: {[t.value for t in ModuleTypeEnum]}"
+                f"Invalid folder: {folder}. "
+                f"Valid values: {MODULE_FOLDERS}"
             )
         
-        self.filters.append(FilterSpec(FilterDimension.TYPE, module_type))
-        self._type_filters.add(type_enum)
+        self.filters.append(FilterSpec(FilterDimension.FOLDER, folder))
+        self._folder_filters.add(folder_lower)
+        return self
+    
+    def add_mcp(self) -> "ModuleFilter":
+        """Add MCP filter - include only modules with mcp=true flag."""
+        self.filters.append(FilterSpec(FilterDimension.MCP, "true"))
+        self._mcp_filter = True
         return self
     
     def add_state(self, state: str) -> "ModuleFilter":
@@ -146,14 +162,16 @@ class ModuleFilter:
         """Add a filter by dimension name.
         
         Args:
-            dimension: One of 'layer', 'type', 'state'
+            dimension: One of 'layer', 'folder', 'mcp', 'state'
             value: The filter value
         """
         dim = FilterDimension(dimension.lower())
         if dim == FilterDimension.LAYER:
             return self.add_layer(value)
-        elif dim == FilterDimension.TYPE:
-            return self.add_type(value)
+        elif dim == FilterDimension.FOLDER:
+            return self.add_folder(value)
+        elif dim == FilterDimension.MCP:
+            return self.add_mcp()
         elif dim == FilterDimension.STATE:
             return self.add_state(value)
         else:
@@ -195,9 +213,13 @@ class ModuleFilter:
             else:
                 matches_by_dimension[FilterDimension.LAYER] = module.layer in self._layer_filters
         
-        # Check type filter
-        if self._type_filters:
-            matches_by_dimension[FilterDimension.TYPE] = module.module_type.enum in self._type_filters
+        # Check folder filter
+        if self._folder_filters:
+            matches_by_dimension[FilterDimension.FOLDER] = module.folder in self._folder_filters
+        
+        # Check MCP filter
+        if self._mcp_filter:
+            matches_by_dimension[FilterDimension.MCP] = module.is_mcp
         
         # Check state filter
         if self._state_filters:
@@ -252,7 +274,7 @@ class ModuleFilter:
 class FilterInfo:
     """Information about available filter values."""
     layers: List[str] = field(default_factory=list)
-    types: List[str] = field(default_factory=list)
+    folders: List[str] = field(default_factory=list)
     states: List[str] = field(default_factory=list)
     
     @classmethod
@@ -260,7 +282,7 @@ class FilterInfo:
         """Get all available filter values."""
         return cls(
             layers=[l.value for l in ModuleLayer],
-            types=[t.value for t in ModuleTypeEnum],
+            folders=MODULE_FOLDERS,
             states=[s.value for s in GitState],
         )
     
@@ -278,10 +300,16 @@ class FilterInfo:
         
         lines.extend([
             "",
-            "  Types:",
+            "  Folders (path-based):",
         ])
-        for t in self.types:
-            lines.append(f"    • {t}")
+        for f in self.folders:
+            lines.append(f"    • {f}")
+        
+        lines.extend([
+            "",
+            "  MCP:",
+            "    • --mcp: Filter to modules with mcp=true flag",
+        ])
         
         lines.extend([
             "",

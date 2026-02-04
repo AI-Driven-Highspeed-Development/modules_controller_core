@@ -1,7 +1,13 @@
-from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+
+
+# Known module folders - used for path-based folder detection
+MODULE_FOLDERS = ["cores", "managers", "utils", "plugins", "mcps"]
+
+# Folders that should NOT show in workspace by default
+HIDDEN_WORKSPACE_FOLDERS = {"cores"}
 
 
 class ModuleLayer(str, Enum):
@@ -33,120 +39,49 @@ class ModuleLayer(str, Enum):
         return value.lower() in [layer.value for layer in cls]
     
     @classmethod
-    def get_valid_layers_for_type(cls, module_type: "ModuleTypeEnum") -> list["ModuleLayer"]:
-        """Get valid layers for a given module type.
+    def get_valid_layers_for_folder(cls, folder: str) -> list["ModuleLayer"]:
+        """Get valid layers for a given module folder.
         
-        Cores can only be FOUNDATION or DEV (never RUNTIME).
-        Other types can be any layer.
+        Cores (folder='cores') can only be FOUNDATION or DEV (never RUNTIME).
+        Other folders can be any layer.
         """
-        if module_type == ModuleTypeEnum.CORE:
+        if folder == "cores":
             return [cls.FOUNDATION, cls.DEV]
         return list(cls)
 
 
-class ModuleTypeEnum(str, Enum):
-    CORE = ("core", "cores")
-    MANAGER = ("manager", "managers")
-    PLUGIN = ("plugin", "plugins")
-    UTIL = ("util", "utils")
-    MCP = ("mcp", "mcps")
-
-    def __new__(cls, singular: str, plural: str) -> "ModuleTypeEnum":
-        obj = str.__new__(cls, singular)
-        obj._value_ = singular
-        obj._plural = plural
-        return obj
-
-    @property
-    def plural(self) -> str:
-        return self._plural
-
-
-@dataclass
-class ModuleType:
-    enum: ModuleTypeEnum
-    name: str
-    plural_name: str
-    path: Path
-    shows_in_workspace: bool = False
-
-    def __init__(
-        self,
-        module_type: ModuleTypeEnum,
-        plural_name: str,
-        path: Optional[Path] = None,
-        shows_in_workspace: bool = False,
-    ) -> None:
-        self.enum = module_type
-        self.name = module_type.value
-        self.plural_name = plural_name
-        self.path = path if path else Path("./" + plural_name)
-        self.shows_in_workspace = shows_in_workspace
+def folder_from_path(module_path: Path, root_path: Optional[Path] = None) -> str:
+    """Derive the folder name (cores, managers, etc.) from a module path.
+    
+    Args:
+        module_path: Absolute or relative path to the module directory
+        root_path: Optional root path for relative resolution
+        
+    Returns:
+        Folder name (e.g., 'cores', 'managers', 'mcps')
+        
+    Raises:
+        ValueError: If the path doesn't match a known module folder
+    """
+    module_path = Path(module_path).resolve()
+    root = (root_path or Path.cwd()).resolve()
+    
+    try:
+        rel_path = module_path.relative_to(root)
+        parts = rel_path.parts
+        if parts and parts[0] in MODULE_FOLDERS:
+            return parts[0]
+    except ValueError:
+        pass
+    
+    # Fallback: check if any part of the path matches a known folder
+    for part in module_path.parts:
+        if part in MODULE_FOLDERS:
+            return part
+    
+    raise ValueError(f"Cannot determine module folder from path: {module_path}")
 
 
-class ModuleTypes:
-    _instances: dict[Path, "ModuleTypes"] = {}
-
-    def __new__(cls, root_path: Optional[Path] = None) -> "ModuleTypes":
-        root = (root_path or Path.cwd()).resolve()
-        instance = cls._instances.get(root)
-        if instance is None:
-            instance = super().__new__(cls)
-            instance._initialized = False
-            cls._instances[root] = instance
-        return instance
-
-    def __init__(self, root_path: Optional[Path] = None) -> None:
-        root = (root_path or Path.cwd()).resolve()
-        if getattr(self, "_initialized", False) and getattr(self, "root_path", None) == root:
-            return
-        self.root_path = root
-        self.module_types: dict[ModuleTypeEnum, ModuleType] = {
-            ModuleTypeEnum.CORE: ModuleType(
-                ModuleTypeEnum.CORE,
-                ModuleTypeEnum.CORE.plural,
-                path=root / ModuleTypeEnum.CORE.plural,
-                shows_in_workspace=False,
-            ),
-            ModuleTypeEnum.MANAGER: ModuleType(
-                ModuleTypeEnum.MANAGER,
-                ModuleTypeEnum.MANAGER.plural,
-                path=root / ModuleTypeEnum.MANAGER.plural,
-                shows_in_workspace=True,
-            ),
-            ModuleTypeEnum.PLUGIN: ModuleType(
-                ModuleTypeEnum.PLUGIN,
-                ModuleTypeEnum.PLUGIN.plural,
-                path=root / ModuleTypeEnum.PLUGIN.plural,
-                shows_in_workspace=True,
-            ),
-            ModuleTypeEnum.UTIL: ModuleType(
-                ModuleTypeEnum.UTIL,
-                ModuleTypeEnum.UTIL.plural,
-                path=root / ModuleTypeEnum.UTIL.plural,
-                shows_in_workspace=True,
-            ),
-            ModuleTypeEnum.MCP: ModuleType(
-                ModuleTypeEnum.MCP,
-                ModuleTypeEnum.MCP.plural,
-                path=root / ModuleTypeEnum.MCP.plural,
-                shows_in_workspace=True,
-            ),
-        }
-        self._initialized = True
-
-    def get_module_type(self, name: ModuleTypeEnum | str) -> ModuleType:
-        if isinstance(name, ModuleTypeEnum):
-            key = name
-        else:
-            try:
-                key = ModuleTypeEnum(name)
-            except ValueError as exc:
-                raise KeyError(f"Module type '{name}' not recognized.") from exc
-        return self.module_types[key]
-
-    def get_all_types(self) -> list[ModuleType]:
-        return list(self.module_types.values())
-
-    def get_all_type_names(self) -> list[str]:
-        return [mt.name for mt in self.module_types.values()]
+def folder_shows_in_workspace(folder: str) -> bool:
+    """Check if modules in a folder should show in workspace by default."""
+    return folder not in HIDDEN_WORKSPACE_FOLDERS

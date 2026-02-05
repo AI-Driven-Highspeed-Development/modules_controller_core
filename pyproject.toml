@@ -6,7 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
     "logger-util",
     "exceptions-core",
-    "yaml-reading-core",
 ]
 
 [project.urls]

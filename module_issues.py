@@ -10,12 +10,11 @@ class ModuleIssueCode(str, Enum):
     MISSING_INIT_YAML = "missing_init_yaml"  # Legacy: kept for compatibility, also used for missing pyproject.toml
     MISSING_PYPROJECT = "missing_pyproject"  # New: explicitly for pyproject.toml
     MISSING_VERSION = "missing_version"
-    MISSING_TYPE = "missing_type"
     MISSING_REQUIREMENTS = "missing_requirements"
     # Layer validation codes
     MISSING_LAYER = "missing_layer"
     INVALID_LAYER = "invalid_layer"
-    INVALID_TYPE_LAYER_COMBO = "invalid_type_layer_combo"
+    INVALID_LAYER_FOR_PATH = "invalid_layer_for_path"  # Layer not valid for this path/folder
     # Doctor-specific codes
     ORPHANED_INIT_YAML = "orphaned_init_yaml"  # Has both init.yaml and pyproject.toml
     MISSING_ADHD_SECTION = "missing_adhd_section"  # pyproject.toml missing [tool.adhd]
@@ -44,9 +43,6 @@ ISSUE_MESSAGES: Dict[ModuleIssueCode, str] = {
     ModuleIssueCode.MISSING_VERSION: (
         "Module is missing '{key}' in pyproject.toml. Specify a semantic version such as '0.0.1' under [project].version."
     ),
-    ModuleIssueCode.MISSING_TYPE: (
-        "Module is missing '{key}' in pyproject.toml. Set the module's type (core, manager, plugin, util, mcp) under [tool.adhd].type."
-    ),
     ModuleIssueCode.MISSING_REQUIREMENTS: (
         "Module is missing '{key}' in pyproject.toml. Include a list (can be empty) of dependencies under [project].dependencies."
     ),
@@ -57,8 +53,8 @@ ISSUE_MESSAGES: Dict[ModuleIssueCode, str] = {
     ModuleIssueCode.INVALID_LAYER: (
         "Module has invalid layer value '{key}'. Valid values are: foundation, runtime, dev."
     ),
-    ModuleIssueCode.INVALID_TYPE_LAYER_COMBO: (
-        "Module has invalid type-layer combination. Core modules cannot be '{key}' layer. Valid layers for cores: foundation, dev."
+    ModuleIssueCode.INVALID_LAYER_FOR_PATH: (
+        "Module has invalid layer for its location. '{key}' layer is not valid for this path. Check folder-layer constraints."
     ),
     # Doctor-specific messages
     ModuleIssueCode.ORPHANED_INIT_YAML: (

@@ -7,27 +7,26 @@ from .modules_controller import (
     ModulesController,
     ModuleInfo,
     WorkspaceGenerationMode,
+)
+from .module_doctor import (
     DoctorIssueSeverity,
     DoctorIssue,
     DoctorReport,
-    MigrateResult,
 )
 from .module_types import (
     ModuleLayer,
-    MODULE_FOLDERS,
-    HIDDEN_WORKSPACE_FOLDERS,
+    # Layer-based constants
+    MODULES_DIR,
+    LAYER_SUBFOLDERS,
+    LAYER_FOUNDATION,
+    LAYER_RUNTIME,
+    LAYER_DEV,
+    # Path utilities
     folder_from_path,
-    folder_shows_in_workspace,
+    layer_from_path,
+    is_in_modules_dir,
 )
 from .module_issues import ModuleIssue, ModuleIssueCode
-from .dependency_walker import (
-    DependencyWalker,
-    DependencyClosure,
-    DependencyNode,
-    DependencyViolation,
-    ViolationType,
-    format_dependency_tree,
-)
 from .module_filter import (
     ModuleFilter,
     FilterMode,
@@ -41,27 +40,25 @@ __all__ = [
     "ModuleInfo",
     "WorkspaceGenerationMode",
     "ModuleLayer",
-    "MODULE_FOLDERS",
-    "HIDDEN_WORKSPACE_FOLDERS",
+    # Layer-based constants
+    "MODULES_DIR",
+    "LAYER_SUBFOLDERS",
+    "LAYER_FOUNDATION",
+    "LAYER_RUNTIME",
+    "LAYER_DEV",
+    # Path utilities
     "folder_from_path",
-    "folder_shows_in_workspace",
+    "layer_from_path",
+    "is_in_modules_dir",
     "ModuleIssue",
     "ModuleIssueCode",
     "DoctorIssueSeverity",
     "DoctorIssue",
     "DoctorReport",
-    # Dependency Walker
-    "DependencyWalker",
-    "DependencyClosure",
-    "DependencyNode",
-    "DependencyViolation",
-    "ViolationType",
-    "format_dependency_tree",
     # Module Filter
     "ModuleFilter",
     "FilterMode",
     "FilterDimension",
     "FilterInfo",
     "GitState",
-    "MigrateResult",
 ]

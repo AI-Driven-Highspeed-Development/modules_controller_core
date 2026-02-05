@@ -2,7 +2,6 @@
 
 This module provides the ModuleFilter class for filtering modules by:
 - layer: foundation, runtime, dev (with inheritance)
-- folder: cores, managers, utils, plugins, mcps (path-based)
 - mcp: filter to MCP modules only (mcp = true flag)
 - state: dirty, unpushed, clean (git states)
 
@@ -19,10 +18,13 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
-from .module_types import ModuleLayer, MODULE_FOLDERS
+from .module_types import ModuleLayer, LAYER_SUBFOLDERS
 
 if TYPE_CHECKING:
     from .modules_controller import ModuleInfo
+
+# Valid folder names (layer folders only)
+VALID_FOLDER_NAMES = list(LAYER_SUBFOLDERS)
 
 
 class FilterMode(str, Enum):
@@ -126,12 +128,15 @@ class ModuleFilter:
         return self
     
     def add_folder(self, folder: str) -> "ModuleFilter":
-        """Add a folder filter (cores, managers, utils, plugins, mcps)."""
+        """Add a folder/layer filter.
+        
+        Accepts layer folders: foundation, runtime, dev
+        """
         folder_lower = folder.lower()
-        if folder_lower not in MODULE_FOLDERS:
+        if folder_lower not in VALID_FOLDER_NAMES:
             raise ValueError(
                 f"Invalid folder: {folder}. "
-                f"Valid values: {MODULE_FOLDERS}"
+                f"Valid values: {VALID_FOLDER_NAMES}"
             )
         
         self.filters.append(FilterSpec(FilterDimension.FOLDER, folder))
@@ -282,7 +287,7 @@ class FilterInfo:
         """Get all available filter values."""
         return cls(
             layers=[l.value for l in ModuleLayer],
-            folders=MODULE_FOLDERS,
+            folders=VALID_FOLDER_NAMES,  # Both legacy and new structure folders
             states=[s.value for s in GitState],
         )
     
@@ -300,9 +305,9 @@ class FilterInfo:
         
         lines.extend([
             "",
-            "  Folders (path-based):",
+            "  Folders (layer-based):",
         ])
-        for f in self.folders:
+        for f in LAYER_SUBFOLDERS:
             lines.append(f"    • {f}")
         
         lines.extend([

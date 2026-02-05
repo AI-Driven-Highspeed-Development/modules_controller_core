@@ -16,7 +16,7 @@ from modules_controller_core.module_filter import (
     GitState,
     LAYER_INHERITANCE,
 )
-from modules_controller_core.module_types import ModuleLayer, MODULE_FOLDERS
+from modules_controller_core.module_types import ModuleLayer, LAYER_SUBFOLDERS
 
 
 class TestFilterModes:
@@ -392,7 +392,9 @@ class TestFilterInfo:
         info = FilterInfo.get_available()
         
         assert set(info.layers) == {l.value for l in ModuleLayer}
-        assert set(info.folders) == set(MODULE_FOLDERS)
+        # Folders include both legacy (cores, managers, etc.) and new (foundation, runtime, dev)
+        expected_folders = set(MODULE_FOLDERS) | set(LAYER_SUBFOLDERS)
+        assert set(info.folders) == expected_folders
         assert set(info.states) == {s.value for s in GitState}
 
     def test_format_returns_string(self):
